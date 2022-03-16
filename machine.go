@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -11,85 +10,116 @@ import (
 type machine struct {
 	Name          string        `json:"name"`
 	Floor         int           `json:"floor"`
+	Pos           int           `json:"pos"`
 	Type          machineType   `json:"type"`
 	Status        machineStatus `json:"status"`
 	LastStartedAt time.Time     `json:"last_started_at"`
 	TimeLeft      time.Duration `json:"time_left"`
+	Duration      int           `json:"duration"`
 }
 
 type machineType string
 
 const (
-	washer machineType = "washer"
-	dryer  machineType = "dryer"
+	washerMachine  machineType = "washer"
+	dryerMachine               = "dryer"
+	unknownMachine             = "unknown"
 )
+
+func (m *machineType) UnmarshalJSON(data []byte) error {
+	s := strings.Trim(string(data), `"`)
+	switch s {
+	case "washer":
+		*m = washerMachine
+	case "dryer":
+		*m = dryerMachine
+	default:
+		*m = unknownMachine
+	}
+	return nil
+}
 
 // machineStatus serves as an enum type for tracking the machine's state,
 // e.g. whether it is idle or in use.
-type machineStatus string
+type machineStatus int
 
 const (
-	statusError     machineStatus = "error"
-	statusIdle      machineStatus = "idle"
-	statusFinishing machineStatus = "finishing"
-	statusInUse     machineStatus = "in_use"
+	statusError machineStatus = iota
+	statusIdle
+	statusFinishing
+	statusInUse
+	statusUnknown
 )
 
-func (m *machine) UnmarshalJSON(data []byte) error {
-	// First, we unmarshal into a map. Then we pick out the fields we need.
-	var xs map[string]interface{}
-	if err := json.Unmarshal(data, &xs); err != nil {
-		return err
-	}
-
-	// Here, a hot mess of reflection to get all the fields.
-	floor_, _ := xs["floor"].(float64)
-	floor := int(floor_)
-	pos_, _ := xs["pos"].(float64)
-	pos := int(pos_)
-	typ_, _ := xs["type"].(string)
-	typ := machineType(typ_)
-	status_, _ := xs["status"].(string)
-	status := machineStatus(status_)
-
-	lastStartedAt_, _ := xs["last_started_at"].(string)
-	LastStartedAt, err := time.Parse(time.RFC3339, lastStartedAt_)
-	if err != nil {
-		return err
-	}
-
-	// Does this count as magic strings?
-	var name string
-	switch pos {
-	case 0:
-		name = "Coin washer"
-	case 1:
-		name = "PayLah washer"
-	case 2:
-		name = "PayLah dryer"
-	case 3:
-		name = "Coin dryer"
+// The string representation of a machine's status should complete the sentence
+// "This machine is ...".
+func (m *machineStatus) String() string {
+	switch *m {
+	case statusError:
+		return "facing an error"
+	case statusIdle:
+		return "idle"
+	case statusFinishing:
+		return "almost done"
+	case statusInUse:
+		return "in use"
 	default:
-		name = "Unknown machine"
+		return "unreachable"
 	}
+}
 
-	m.Floor = floor
-	m.Type = typ
-	m.Status = status
-	m.Name = name
-	m.LastStartedAt = LastStartedAt
-
-	if status != statusInUse {
-		m.TimeLeft = 0
-		return nil
+func (m *machineStatus) UnmarshalJSON(data []byte) error {
+	s := strings.Trim(string(data), `"`)
+	switch s {
+	case "error":
+		*m = statusError
+	case "idle":
+		*m = statusIdle
+	case "finishing":
+		*m = statusFinishing
+	case "in_use":
+		*m = statusInUse
+	default:
+		*m = statusUnknown
 	}
-
-	// Perhaps we shouldn't be doing this here. It makes this method impossible
-	// to test.
-	duration, _ := xs["duration"].(int)
-	m.TimeLeft = time.Until(LastStartedAt.Add(time.Duration(duration) * time.Second))
-
 	return nil
+}
+
+// machineHumanFriendlyNames maps the position of each machine in the laundry
+// room to their conventional names.
+var machineHumanFriendlyNames map[int]string = map[int]string{
+	0: "Coin washer",
+	1: "PayLah washer",
+	2: "PayLah dryer",
+	3: "Coin dryer",
+}
+
+// addName decides on the right resident-friendly name for the machine based
+// on the position.
+func (m *machine) addName() {
+	name, ok := machineHumanFriendlyNames[m.Pos]
+	if !ok {
+		m.Name = "Unknown machine"
+		return
+	}
+	m.Name = name
+}
+
+// computeTimeLeft sets the TimeLeft field on the machine, if the machine is
+// in use.
+func (m *machine) computeTimeLeft() {
+	if m.Status != statusInUse {
+		return
+	}
+	m.TimeLeft = time.Until(m.LastStartedAt.Add(time.Duration(m.Duration) * time.Second))
+}
+
+func (m *machine) String() string {
+	return fmt.Sprintf("%s is %s \n\t Last started at %s \n\t %s remaining",
+		m.Name,
+		m.Status.String(),
+		m.LastStartedAt.Format(time.Kitchen),
+		m.TimeLeft)
 }
 
 // machines is a wrapper around a slice of machines.
@@ -98,7 +128,8 @@ type machines []*machine
 func (ms machines) String() string {
 	b := strings.Builder{}
 	for _, m := range ms {
-		b.WriteString(fmt.Sprintf("%s is %s \n\t last started at %s \n\t %s remaining \n", m.Name, m.Status, m.LastStartedAt.Format(time.Kitchen), m.TimeLeft))
+		b.WriteString(m.String())
+		b.WriteString("\n\n")
 	}
 	return b.String()
 }
