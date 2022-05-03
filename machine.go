@@ -115,7 +115,7 @@ func (m *machine) computeTimeLeft() {
 }
 
 func (m *machine) String() string {
-	return fmt.Sprintf("%s is %s \n\t Last started at %s \n\t %s remaining",
+	return fmt.Sprintf("%s is %s\nLast started at %s\n%s remaining",
 		m.Name,
 		m.Status.String(),
 		m.LastStartedAt.Format(time.Kitchen),

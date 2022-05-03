@@ -1,0 +1,4 @@
+export OPENAPI_URL=
+export TELEBOT_TOKEN=
+export API_URL=
+export API_KEY=

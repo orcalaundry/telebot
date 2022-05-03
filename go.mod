@@ -1,4 +1,4 @@
-module github.com/orcalaundry/telebot
+module github.com/rc4laundrystatus/telebot
 
 go 1.17
 

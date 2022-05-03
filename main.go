@@ -29,6 +29,7 @@ func main() {
 	w.start()
 }
 
+// Represent the floor as a string, so it's easier to format and print.
 type house string
 
 const (
